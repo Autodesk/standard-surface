@@ -1,0 +1,525 @@
+<meta charset="utf-8" emacsmode="-*- markdown -*-">
+<link rel="stylesheet" href="style/style.css">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+**A Surface Standard**
+ Iliyan Georgiev, Jamie Portsmouth, Zap Andersson, Adrien Herubel, Alan King, Shinji Ogaki, Frederic Servant
+ <br/>
+ *version 1.0, draft 3*
+ ![](images/title.jpg width="75%")
+ ![](images/autodesk-logo.svg width="150px")
+
+
+This document is intended as a specification of an "uber" surface shader suitable for a variety of renderers. It follows the design of the Standard Surface shader in the Arnold renderer, which provides a material representation capable of accurately modeling most materials used in practical visual effects and feature animation productions. The shader has a relatively uncomplicated implementation and its user interface consists of a minimal set of  parameters with intuitive meanings and ranges. The document is versioned and will be updated as changes to the specification are made.
+
+A reference implementation in OSL is provided at the end of this document. Its intention is to specify enough detail for implementation in other renderers that matches the look to a reasonable level of fidelity depending on the purpose.
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+Historical background and objectives
+================================================================================
+
+Interchange of computer graphics scene assets between different facilities remains a significant problem today, especially with regard to surface appearance. Different renderers and 3D engines use different shading systems, shading languages, and fixed-function pipelines. Accurately modeling surface appearance remains a complex and pertinent problem, and a topic of active scientific research. However, there is a strong need *today* for the industry to find a standardized material model that both covers most common use cases in day-to-day workflows and is easy to use.
+
+Over the years, certain de-facto standard appearance definition frameworks have emerged as different vendors have come to the consensus of separating the definition of surface light scattering properties from the light transport simulation in the scene. Such general frameworks include MaterialX, Material Definition Language (MDL), and Open Shading Language (OSL), which allow specifying the material as a combination of primitive surface reflectance models. These frameworks alone however are not sufficient for look development by end users who should not be expected to build surface shaders from the ground up for day-to-day tasks. There is a need for a standard "uber-shader" parameterization with a well-defined set of parameters that can be tweaked to represent most real-world (as well as imaginary) materials. No such widely adopted material model exists currently, and in this proposal we aim to fill this gap. Our reference implementation, at the end of the document, is written in OSL [#Gritz2010].
+
+Our proposed model follows closely the Arnold 5 Standard Surface shader, which has strong spiritual predecessors in Anders Langlands' alSurface [#Langlands2014] and Autodesk 3ds 2014 Max's Physical Material [#Andersson2016]. The alSurface shader has served as a de-facto standard in the industry for a while but is no longer actively developed. 3ds Max's Physical Material in turn has been strongly inspired by Allegorithmic's PBR shading model, Disney's Principled Shader, and general industry trends in several real-time 3D engines, and has been production proven with support by all major render engines for 3ds Max.
+
+In this proposal, rather than allowing parameters for every conceivable case, we intentionally try to boil the set of parameters down to only those that are most useful in practice. We also fix the combination of primitive reflectance models to ensure that the users work within the bounds of what is physically plausible as much as possible. We aim for the overall behavior to be simple, logical, intuitive, and understandable, so that the model covers most day-to-day use cases. For the few it does not cover, one may need to reach for a renderer-specific shader, or build a bespoke shading network.
+
+
+Layered mixture model
+================================================================================
+
+Our goal is to create a surface shading model that is computationally efficient, physically plausible, and able to faithfully represent a wide variety of real-world materials. The light scattering characteristics at the surface points of materials like metal, glass, and wall paint can be accurately modeled via simple analytic, or "atomic", *bidirectional scattering distribution functions* (BSDFs). Other materials, such as finished wood, cloth, or skin, have more intricate scattering behavior as they are made of semi-transparent layers of matter stacked on top of each other. To model such materials, each interface between two layers can be represented by an atomic BSDF. Additionally, many real objects are made of diverse materials, e.g. metal and plastic, and in practice it is convenient to texture the presence of each material on the object's surface. While in reality the transitions between two materials across the surface is typically abrupt, the ability to continuously mix (i.e. interpolate between) materials is useful for anti-aliasing as well as for artistic purposes.
+
+The two operations -- *layering* and *mixing* of atomic BSDFs -- provide a language for building a shader that models diverse and complex materials. To be physically meaningful, a stack of layers should have an opaque (e.g. metal) or transparent (e.g. glass or skin) interface at the bottom, with a set of Fresnel-governed dielectric interfaces above it. Any light that is not reflected by a layer is either absorbed or transmitted to the layers beneath. The mixture operation is more flexible, in the sense that it automatically maintains energy conservation and preservation. It can be thought of as statistical mixture of two materials, thus it works with any two BSDFs, even though not all combinations make physical sense.
+
+Our shader models a material model consisting of ten components that are layered and mixed hierarchically, as illustrated in Figure [diagram_model]. The properties of individual components and their composition can vary across the surface. Given a point and an incident direction, the evaluation result of the shader is a BSDF that describes the light scattering properties of the surface at that point and direction, plus an optional emission component and a subsurface scattering distribution.
+
+![Figure [diagram_model]: Schematic illustration of the idealized material model that our shader aims to emulate. Horizontal stacking of components represents statistical mixture and vertical stacking represents layering. Components marked with asterisk are optional, as discussed in Section [Compatibility mode].](images/diagram_model.svg width="85%")
+
+
+Closure representation
+--------------------------------------------------------------------------------
+
+Accurately simulating the light propagation inside a layered material is generally difficult and computationally expensive, and remains a topic of active research. Our implementation takes the common pragmatic assumption that the resultant BSDF can be represented as a simple mixture (i.e. linear combination) of atomic BSDFs -- one for each component in Figure [diagram_model]. We still try to emulate the most important physical effects of layering -- color tinting, reflection/transmission blurring, and angle-dependent layer transparency -- by adjusting the properties and the combination weights of the atomic BSDFs.
+
+Each atomic BSDF, often informally referred to as "lobe", is either a reflection or a transmission distribution function, i.e. BRDF or BTDF (except for emission and subsurface scattering). In our implementation, these BSDFs are represented by *closures*. A closure is a "black-box" object that contains renderer-specific routines for evaluating and sampling the BSDF. It is defined and used by the renderer but is *instantiated* by the shader with a set of parameters of basic data types, such as floats, vectors, and colors.
+
+Our shader returns a list of closure objects, each with an associated (color) weight. The closures' instantiation parameters and weights can be controlled by the user via a set of shader-level parameters to simulate a wide variety of physically plausible materials. The sum of weighted closures fully describes the light emission and scattering properties at the given surface point. The closure list, shown Table [closures], is ultimately passed to the renderer for integrating the light  transport around the point.
+<br/><br/>
+
+Component              | Closure             | Description
+-----------------------|---------------------|-----------------------------------
+Transparency           | `transparency_btdf` | simple pass-through, delta BTDF
+Coating                | `specular_brdf`     | dielectric microfacet BRDF (GGX)
+Emission               | `emission`          | diffuse emission
+Metal                  | `metal_brdf`        | conductor microfacet BRDF (GGX)
+Specular reflection    | `specular_brdf`     | dielectric microfacet BRDF (GGX)
+Specular transmission* | `specular_btdf`     | dielectric microfacet BTDF (GGX)
+Sheen*                 | `sheen_brdf`        | retro-reflective dielectric microfacet BRDF [#Estevez2017]
+Diffuse reflection     | `diffuse_brdf`      | diffuse microfacet BRDF (Oren-Nayar)
+Diffuse transmission*  | `diffuse_btdf`      | diffuse microfacet BTDF (Oren-Nayar)
+Subsurface scattering* | `subsurface`        | subsurface scattering (e.g. BSSRDF)
+[Table [closures]: The list of closures representing each component of the material model illustrated in Figure [diagram_model]. Closures marked with asterisk are optional, as we discuss in Section [Compatibility mode] below.]
+
+The closure weights are computed by a formula designed to satisfy energy conservation by construction, while approximately simulating the effects of light propagation between layers. Arguably, the most prominent such effect is the directionally varying transparency of specular (dielectric) layers, which is due to the Fresnel-governed reflectance. We emulate this effect by blending the specular BRDF closures with the underlying closures based 
+
+Microfacet BRDF models apply a Fresnel term per facet orientation, and we assume that a `reflectance(brdf)` function is available for such closures that returns their reflectance, a.k.a. directional albedo.
+
+
+
+This fraction is equal to one minus the cosine-weighted BRDF integrated over the hemisphere above the surface. This integral generally has to be estimated numerically, although a crude few-sample approximation typically suffices. We rely on `reflectance(coat_bsdf)` to compute this.
+
+The weight computation formula is most easily visualized as a tree, where every leaf node is a closure and every inner node is a linear combination of its two children, with weights specified at the edges. We illustrate this tree structure in Figure [diagram_closure_mix]. The final weight of each closure is the product of edge weights along the path between its corresponding leaf note and the root node. In Section [Closures] below we describe the individual closures and edge weights in more detail.
+
+![Figure [diagram_closure_mix]: Our shader returns the root closure `standard_surface`, which is a weighted sum of "atomic" closures shown as leaf nodes in the tree. The weight of each closure is the product of edge weights along the path from its corresponding leaf to the root node. The edge weights are parameterized by shader-level parameters, shown in bold.](images/diagram_closure_mix.svg width="100%")
+
+
+Compatibility mode
+--------------------------------------------------------------------------------
+
+Our model aims to be relatively simple for production-grade applications, however the number of its closures and parameters can be too much to handle for real-time engines. For such applications, we define a "preview" level of compatibility that simplifies our shader to a reasonable level of visual similarity in typical cases. The simplification amounts to zeroing the combination weight parameters **`transmission`**, **`sheen`**, and **`subsurface`**, which effectively eliminates the `spec_btdf`, `sheen_brdf`, `subsurface`, and `diffuse_btdf` closures. In this compatibility mode we also ignore certain parameters in other closures, which are marked with asterisks in the parameter tables in the following section.
+
+
+Closures
+================================================================================
+
+In this section, we describe the individual closures used by our shader, listed in Table [closures], their parameters and how they are weighted against each other. Some parameters are reused among closures, hence they appear multiple times in the subsections below. Shader-level parameters are denoted with bold font, e.g. **`opacity`**.
+
+!!!
+    We write the closures (or linear combinations of them) in the form of function calls, such as `transparency(...)`. The exact arguments of each closure are not stipulated, rather it is understood that the given parameters, whose meaning should be reasonably clear from the description, are translated into the appropriate arguments for the specific closure implementation. Our reference OSL implementation provides a concrete example of how this translation might be done.
+
+
+Transparency
+--------------------------------------------------------------------------------
+
+The `transparency` closure has no instantiation parameters and makes the surface fully transparent at the shading point, i.e. the input ray is transmitted un-deflected and un-tinted. The effect is illustrated in Figure [opacity]. The **`opacity`** shader parameter controls the relative weight (via a linear "alpha" blend) of all other closures, hence the transparency weight is `1-`**`opacity`**.
+
+The combination of transparency and coat closures via the following formula is the top level mixture which provides the final standard surface closure combination:
+
+<!--
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+standard_surface(...) = (1 - opacity) * transparency(...) + opacity * coat_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-->
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+standard_surface = cmix(transparency(), coat_mix, opacity)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+where the `coat_mix` closure combination is defined below and the `cmix()` function is
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+closure color cmix(
+    color weight1, closure color closure1, color weight2, closure color closure2)
+{
+    return weight1 * closure1 + weight2 * closure2;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+where `type` can be either `float` or `color`.
+
+
+(1 - coat) * white + coat * coat_color * (1 - reflectance(coat_brdf))
+(1 - coat) * white + coat * coat_color - coat * coat_color * reflectance(coat_brdf)
+color(1) - coat * color(1) + coat * coat_color - coat * coat_color * reflectance(coat_brdf)
+(1 - coat) * white + coat * coat_color  - coat * coat_color * reflectance(coat_brdf)
+lerp(coat, white, coat_color) - coat * coat_color * reflectance(coat_brdf)
+
+mix(coat,
+    emission_layer(),
+    coat_brdf() + coat_color * (1 - reflectance(coat_brdf)) * emission_layer()
+)
+
+1 - specular * specular_color * reflectance(spec_brdf)
+
+
+
+(###) Parameters (transparency))
+
+Name           | Type  | Default | Description
+---------------|-------|---------|-------------
+**`opacity`**  | color | `1,1,1` | the (colored) opacity of the surface (fully opaque by default)
+
+
+![](images/transparency1.jpg width=90%) ![](images/transparency2.jpg width=90%) ![](images/transparency3.jpg width=90%)
+<div class="shifted-caption">
+    ![Figure [opacity]: Opacity vs. transmission. From left to right: sphere with transmission only, (binary) opacity mask, sphere with transmission and masked opacity.](dummy)
+</div>
+
+
+
+Coating
+--------------------------------------------------------------------------------
+
+The topmost scattering layer is a dielectric Fresnel-reflective coating with a GGX microfacet BRDF closure `coat_brdf`. As a dielectric, this BRDF is not energy preserving (i.e. its directional reflectance is generally less than one) as it obeys Fresnel reflection laws. The layer is assumed to be infinitely thin, and the remaining non-reflected light is passed directly to the underlying layer without refraction. The reflection color is fixed to white.
+
+To ensure energy preservation when blending with the underlying layers, we need the fraction of energy that is transmitted through the coat. This fraction is equal to one minus the cosine-weighted BRDF integrated over the hemisphere above the surface. This integral generally has to be estimated numerically, although a crude few-sample approximation typically suffices. We rely on `reflectance(coat_bsdf)` to compute this.
+
+The resulting closure combination formula is
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+coat_layer(...) = coat * coat_brdf(...) 
+    + lerp(coat, white, coat_color * (1 - reflectance(coat_brdf))) * emission_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+where `lerp(t, a, b) = (1 - t) * a + t * b`.
+
+Here white denotes a constant white color. Thus the coat layer's effect is defined as the reflection from the coat, plus a scalar blend between two colors; a white (no-op) coat layer, and the underlying layers' *transmitted* light times the tint color.
+
+In a real physical material, light scattered by underlying layers is tinted/blurred when transmitted through a colored/rough coating. Capturing these effects accurately in a renderer requires simulating the light interactions between the individual layers in order. Since our model is a simple linear combination of closures that are evaluated independently, we emulate these two effects:
+
+* Tinting all layers below the coating is achieved by scaling their closures by the **`coat_color`** parameter, which can be interpreted as an absorption effect within the coat medium (i.e. energy is absorbed by a tinted coat layer).
+* We provide an option for the coating roughness to increase the roughness of the other GGX BSDFs, namely the metal BRDF, specular BRDF, and specular BTDF. The remaining BSDFs are not modulated as they are already rough. The formula for modulating a given **`roughness`** is
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+roughness = lerp(coat * coat_affect_roughness * coat_roughness, roughness, 1)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(###) Coating parameters
+
+Name                         | Type  | Default  | Description
+-----------------------------|-------|----------|------------
+**`coat`**                   | float | `0`      | reflection weight (reflection color is fixed to white)
+**`coat_color`**             | color | `1,1,1`  | tint color for the light coming from the layers below
+**`coat_roughness`**         | float | `0.1`    | coat reflection roughness; squared internally before passed to the BSDF to achieve a more linear perceptual response [#Burley2012]
+**`coat_IOR`**               | float | `1.5`    | refractive index of `coat_brdf`
+**`coat_normal`**            | vector | `0,0,0` | shading normal for the coating reflections; optional, overrides the default shading normal; has no effect on the closure combination weights
+**`coat_affect_color`***     | float | `0`      | how much to affect the color of the diffuse and subsurface scattering layers below, range `[0,1]`
+**`coat_affect_roughness`*** | float | `0`      | how much to affect the roughness of the specular reflection layers below, range `[0,1]`
+
+![](images/coat1.jpg width=70%) ![](images/coat2.jpg width=70%) ![](images/coat3.jpg width=70%)
+<div class="shifted-caption">
+    ![Figure [coat]: Various effects that can be achieved by combining a coat and a specular layer. From left to right: flakes, raindrops, carbon fiber.](dummy)
+</div>
+
+
+Emission
+--------------------------------------------------------------------------------
+
+An additive directionally uniform (i.e. Lambertian) emission closure `emission(...)` sits below the coating, but is otherwise unaffected by the energy-conservation logic for the combination weights that is applied to the other closures. Emission occurs below the coating layer, which allows for the rendering of low-emission materials that are bounded by a reflective surface (for example, glow-sticks) without explicit modelling of the emitter and the bounding object.
+
+The closure combination for this layer is
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+emission_layer(...) = emission * emission_color * emission(...) + metal_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(###) Emission parameters
+
+Name                 | Type  | Default | Description
+---------------------|-------|---------|------------
+**`emission`**       | float | `0`     | emission color multiplier
+**`emission_color`** | color | `1,1,1` | emission color
+
+![Figure [emission]: Texture map representing hot lava connected to **`emission_color`**.](images/emission.jpg width=50%)
+
+
+Metal
+--------------------------------------------------------------------------------
+
+Metallic reflection from under the coat layer is modelled as a GGX microfacet conductor BRDF `metal_brdf(...)`, whose absorption coefficient and complex index of refraction are computed from the more user-friendly parameters **`base_color`** and **`specular_color`** [#Gulbrandsen2014], defined below. This allows for achieving a desired look by directly specifying the (texturable) colors at normal and grazing incidence. Note that these two color parameters are also used for the non-metallic (i.e. dielectric) specular and diffuse BRDFs, discussed below. 
+
+This non-transmissive metallic BRDF is blended as a statistical mixture with the non-metallic (i.e. dielectric) specular layer model, described in the next section, according to the **`metalness`** parameter as follows:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+metal_layer(...) = metalness * metal_brdf(...) + (1 - metalness) * spec_refl_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Rainbow-like iridescence effects occur, due to interference, when a thin refractive film with thickness on the order of the light wavelength is placed on top of a material. These effects are incorporated in the microfacet closures, which applies to the metal or specular reflection and transmission layers, whichever is present. The thin-film logically sits between the coat and underlying layer, but since the coat layer is assumed to be infinitely thin, the refractive index of the medium exterior to the film is taken to be that of vacuum, i.e. `1.0`. The one interior to it is assumed to be that of the specular layer. The thin-film model implements that of Belcour and Barla [#Belcour2017].
+
+(###) Metal parameters
+
+Name                       | Type  | Default | Description
+---------------------------|-------|---------|------------
+**`base_color`**           | color | `1,1,1` | reflection color at normal incidence (i.e. surface seen from straight up)
+**`specular_color`**       | color | `1,1,1` | reflection color at grazing incidence (i.e. around silhouettes)
+**`specular_roughness`**   | float | `0.1`   | reflection roughness; squared internally before passed to the BSDF in order to achieve a more uniform roughness look over the parameter range
+**`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `metal_brdf`, range `[0,1]`
+**`specular_rotation`***   | float | `0`     | orientation of anisotropy, range `[0,1]` (where `1` means 180 degrees)
+**`thin_film_thickness`*** | float | `0`     | thickness of the film (in nanometres)
+**`thin_film_IOR`***       | float | `1.5`   | refractive  index of the film
+
+![Figure [metal]: Metals produced by the metal closure by setting the **`base_color`** and **`specular_color`** parameters. From left to right: aluminium, copper, gold.](images/metals.jpg)
+
+![](images/thin_film1.jpg width=99%) ![](images/thin_film2.jpg width=99%) ![](images/thin_film3.jpg width=99%)
+<div class="shifted-caption">
+    ![Figure [thinfilm]: The effect of thin-film interference on a surface. From left to right: multi-tone car paint, soap bubbles, and burnt chrome.](dummy)
+</div>
+
+
+Specular reflection
+--------------------------------------------------------------------------------
+
+This layer models a GGX microfacet dielectric BRDF `spec_brdf(...)`, conceptually right under the coating. Similarly to the coating, this BRDF is not itself energy conserving due to Fresnel laws, and the energy that is not reflected is completely transmitted to the underlying layers. The closure combination we use which expresses the energy balance between the reflected and transmitted specular lobes is then
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+spec_refl_layer(...) = specular * specular_color * spec_brdf(...) +
+    (1 - specular_color * specular * reflectance(spec_brdf)) * spec_trans_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(###) Specular reflection parameters
+
+Name                       | Type  | Default | Description
+---------------------------|-------|---------|------------
+**`specular`**             | float | `1`     | specular reflection weight
+**`specular_color`**       | color | `1,1,1` | specular reflection color
+**`specular_roughness`**   | float | `0.2`   | reflection roughness; squared internally before passed to the BSDF to achieve a more uniform roughness look over the parameter range 
+**`specular_IOR`**         | float | `1.5`   | refractive index of `spec_brdf` (default is glass)
+**`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `spec_brdf`, range `[0,1]`
+**`specular_rotation`***   | float | `0`     | orientation of anisotropy, range `[0,1]` (`1` means 180 degrees)
+**`thin_film_thickness`*** | float | `0`     | thickness of the film (in nanometres)
+**`thin_film_IOR`***       | float | `1.5`   | refractive index of the film
+
+![](images/spec_ior1.jpg width=60%) ![](images/spec_ior2.jpg width=60%) ![](images/spec_ior3.jpg width=60%)
+<div class="shifted-caption">
+    ![Figure [specior]: Varying the specular refractive index. From left to right: 1.0, 1.1, 1.52 (default).](dummy)
+</div>
+
+
+Specular transmission
+--------------------------------------------------------------------------------
+
+This layer models a statistical blend (according to the **`transmission`** parameter) of either transmission through the bottom of the specular layer via a GGX microfacet BTDF `spec_btdf(...)`, or scattering from a diffuse base layer (`base_layer`). The closure combination is given by
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+spec_trans_layer(...) = transmission * transmission_color * spec_btdf(...) +
+    (1 - transmission) * base_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The transmission closure `spec_btdf` shares many parameters with `spec_brdf`; for example, the roughness of is the same as **`specular_roughness`**. Rough reflection with sharp transmission, though not physically correct, can be achieved by making the coating rough and the specular reflection sharp. Just like the specular BRDF, this BTDF can be modulated by a thin film by reusing the same parameters.
+
+If the **`thin_walled`** boolean parameter is `false`, then the surface is considered to be a boundary of a finite-sized solid object. Thus, light refracts when entering and leaving the object, according to the `spec_btdf(...)` closure. If **`thin_walled`** is `true`, the surface is double-sided, representing an infinitely thin shell (such as an idealized tree leaf or paper), and light therefore does not undergo refraction upon specular transmission to the opposite side. In this case the refractive index is set to that of the surrounding medium (e.g. 1.0 for vacuum), and dispersion and thin film are disabled.
+
+We also allow specifying the properties of a homogeneous medium interior to the object. The **`transmission_color`** and **`transmission_depth`** parameter pair is a commonly used artist-friendly way to set the medium absorption coefficient, while **`transmission_scatter`** directly sets the medium scattering coefficient. These parameters allow the rendering of objects such as colored glass or murky water.
+
+(###) Specular transmission parameters
+
+Name                                   | Type    | Default | Description
+---------------------------------------|---------|---------|------------
+**`transmission`***                    | float   | `0`     | transmission weight
+**`transmission_color`***              | color   | `1,1,1` | transmission color, tint due to absorption
+??? **`transmission_depth`***          | float   | `0`     | the distance travelled inside the material by white light before its color becomes exactly **`transmission_color`** by Beer's law ?????
+**`transmission_scatter`***            | color   | `0,0,0` | color to simulate the blurriness that is the result of light scattering inside the object
+**`transmission_scatter_anisotropy`*** | float   | `0`     | the anisotropy of the phase function of the medium inside the object, range `[-1,1]`
+**`transmission_dispersion`***         | float   | `0`     | dispersion Abbe number, describing how much the index of refraction varies across wavelengths
+**`specular_roughness`**               | float   | `0.1`   | refraction roughness of `spec_btdf`; squared internally before passed to the BTDF to achieve a more uniform roughness look over the parameter range `[0,1]`
+**`specular_IOR`**                     | float   | `1.52`  | refractive index of `spec_btdf` (default is glass)
+**`specular_anisotropy`***             | float   | `0`     | reflection anisotropy of `spec_btdf`, range `[0,1]`
+**`specular_rotation`***               | float   | `0`     | orientation of anisotropy, range `[0,1]` (where `1` means 180 degrees)
+**`thin_film_thickness`***             | float   | `0`     | thickness of the film
+**`thin_film_IOR`***                   | float   | `1.5`   | refractive index of the film
+**`thin_walled`***                     | boolean | `false` | if `true`, the object is considered infinitely thin and the surface double-sided
+
+![](images/transmission1.jpg width=99%) ![](images/transmission2.jpg width=99%) ![](images/transmission3.jpg width=99%)
+<div class="shifted-caption">
+    ![Figure [transmission]: The effect of **`transmission_scatter_anisotropy`**. From left to right: -0.5, 0.0, 0.5.](dummy)
+</div>
+
+
+Sheen
+--------------------------------------------------------------------------------
+
+The `sheen_brdf` closure is a microfacet sheen BRDF model based on that of Estevez and Kulla [#Estevez2017]. It simulates the look of textiles where the surface facets are cylindrical "fibres" oriented with axes primarily parallel to the surface normal, producing a specular highlight at grazing angles. Conceptually this lies on top of the diffuse substrate, and thus the energy transmitted to the substrate is reduced by the sheen reflectance, as in the combination formula below.
+
+(###) Sheen parameters
+
+Name                   | Type  | Default | Description
+-----------------------|-------|---------|------------
+**`sheen`***           | float | `0.8`   | reflection weight of `sheen_brdf`
+**`sheen_color`***     | color | `1,1,1` | reflection color of `sheen_brdf`
+**`sheen_roughness`*** | float | `0.3`   | reflection roughness of `sheen_brdf`, range `[0,1]`
+
+![](images/sheen1.jpg width=99%) ![](images/sheen2.jpg width=99%) ![](images/sheen3.jpg width=99%)
+<div class="shifted-caption">
+    ![Figure [sheen]: Various textiles rendered using the sheen closure.](dummy)
+</div>
+
+
+Diffuse reflection
+--------------------------------------------------------------------------------
+
+The base layer consists of a statistical mixture, according to the **`subsurface`** parameter, of an opaque diffuse layer and a subsurface scattering layer.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+base_layer(...) = (1 - subsurface) * base * base_color * diffuse_layer(...)
+    + subsurface * subsurface_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The diffuse layer model consists of the sheen model (described below), and conceptually underlying that an Oren-Nayar microfacet BRDF `diffuse_brdf(...)` representing an opaque diffuse "substrate".
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+ diffuse_layer(...) = sheen * sheen_color * sheen_brdf(...)
+    + (1 - sheen * reflectance(sheen_brdf)) * diffuse_brdf(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(###) Diffuse reflection parameters
+
+Name                     | Type  | Default | Description
+-------------------------|-------|---------|------------
+**`base`**               | float | `0.8`   | reflection weight of `diffuse_brdf`
+**`base_color`**         | color | `1,1,1` | reflection color of `diffuse_brdf`
+**`diffuse_roughness`*** | float | `0`     | reflection roughness of `diffuse_brdf`
+
+
+Diffuse transmission
+--------------------------------------------------------------------------------
+
+As above, the subsurface layer degenerates to diffuse transmission if **`thin_walled`** is `true`. This represents an infinitely thin shell (for example an idealized piece of rough paper) through which energy is transmitted into a diffuse lobe.
+
+This corresponds to a diffuse Oren-Nayar microfacet BRDF flipped about the shading normal to make it a BTDF `diffuse_btdf(...)`.
+
+(###) Diffuse transmission parameters
+
+Name                     | Type  | Default | Description
+-------------------------|-------|---------|------------
+**`subsurface`***        | float | `0`     | diffuse transmission weight
+**`subsurface_color`***  | color | `1,1,1` | diffuse transmission color
+**`diffuse_roughness`*** | float | `0`     | diffuse transmission roughness
+
+![](images/thin_walled1.jpg width=99%) ![](images/thin_walled2.jpg width=99%)
+<div class="shifted-caption">
+    ![Figure [thinwalled]: Opaque paper plane (left) vs diffuse transmission enabled via **`thin_walled`** (right).](dummy)
+</div>
+
+
+Subsurface scattering
+--------------------------------------------------------------------------------
+
+Subsurface scattering models the effect of light propagation and diffusion under the surface, where in general the exiting ray leaves at a different surface location than the incident ray. We do not stipulate here what specific model is used to simulate this effect, e.g. based on diffusion-profile surface illumination blurring  or brute-force subsurface ray tracing.
+
+This layer is linearly mixed with the diffuse layer using the **`subsurface`** parameter, according to the mixture formula given above. It represents a subsurface scattering (SSS) BSSRDF `subsurface(...)` closure if **`thin_walled`** is `false` (the default), otherwise it degenerates to diffuse transmission described in the next section (in which case only the **`subsurface`** and **`subsurface_color`** parameters are used). 
+
+The corresponding closure combination is given by (where here **`thin_walled`** is taken to be `1` if `true` and `0` if `false`): 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+subsurface_layer(...) = (1 - thin_walled) * subsurface(...)
+    + thin_walled * subsurface_color * diffuse_btdf(...).
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(###) Subsurface scattering parameters
+
+Name                         | Type  | Default | Description
+-----------------------------|-------|---------|------------
+**`subsurface`***            | float | `0`     | subsurface scattering weight
+**`subsurface_color`***      | color | `1,1,1` | subsurface color, used by `subsurface(...)` closure 
+**`subsurface_radius`***     | color | `1,1,1` | subsurface radii (i.e. mean free paths) of the red, green, and blue channels
+**`subsurface_scale`***      | float | `1`     | scalar scale for **`subsurface_radius`**
+**`subsurface_anisotropy`*** | float | `0`     | anisotropy of the subsurface medium phase function, range `[-1,1]`
+
+![](images/subsurface1.jpg width=99%) ![](images/subsurface2.jpg width=99%) ![](images/subsurface3.jpg width=99%)
+<div class="shifted-caption">
+    ![Figure [subsurface]: The effect of varying the subsurface scattering radius (**`subsurface_radius`**).](dummy)
+</div>
+
+
+Discussion
+================================================================================
+
+Having presented our proposed model, in this section we discuss some of the potential subtleties, caveats and areas for future improvement. 
+
+
+Scalar vs. RGB closure weighting
+--------------------------------------------------------------------------------
+
+Consider our formula for the specular reflection layer, in which we have the closure combination:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+spec_refl_layer(...) = specular * specular_color * spec_brdf(...)
+    + (1 - specular_color * specular * reflectance(spec_brdf)) * spec_trans_layer(...)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Here the **`specular_color`** factor multiplying the `reflectance(...)` term is included to ensure energy *preservation*. For example, if the reflection is pure red, only the complementary cyan color is transmitted into the underlayer. This allows preventing the loss of energy in the combined model and creating multi-layer materials with high albedo. But while it is physically correct, it can also make it harder for an artist to control the appearance of a complementary color tint in the underlying lobes.
+
+An alternative approach we considered (used, e.g., in 3ds Max's Physical Material model), is to keep the multiplicative closure factors as scalars, e.g. in this case **`specular_color`** would be omitted from the closure weight. This then technically violates energy preservation (i.e. energy is unphysically dissipated) and makes it difficult to create high-albedo materials with colored specular reflection. However, such behavior can be more intuitive to artists.
+
+On balance we prefer the physically correct behaviour, however this is open to debate.
+
+
+Reciprocity
+--------------------------------------------------------------------------------
+
+A physically correct BSDF must satisfy reciprocity (i.e. symmetry under exchange of the incoming and outgoing directions). However, in our proposed model, even if the leaf-level BSDFs are reciprocal, the closure combination is *not*. This is due to the introduction of the `reflectance(...)` function which depends on the incoming direction only. This may present a problem if the shading model were to be incorporated in certain light transport algorithms, such as bidirectional path tracing, which typically rely on this property to hold.
+
+However, enforcing reciprocity would be likely to significantly complicate the mathematical form of our model, without producing a qualitatively better visual appearance. For many renderers, including Arnold -- a unidirectional path tracer, the physical constraint of reciprocity can be violated, even in the leaf BSDFs, without causing any real problems. Furthermore, enforcing reciprocity of a layered material in a truly physically correct manner [#Jakob2014] is currently too complicated and cumbersome to implement in a production renderer. Models in actual production use that achieve reciprocity, such as the coating scheme of Kulla and Estevez [#Kulla2017], do so by introducing drastic approximations with inaccuracy likely similar to the non-reciprocal approach described here.
+
+Therefore, for the time being we do not consider the incorporation of reciprocity in our model to be a strict necessity.
+
+
+Layering model
+--------------------------------------------------------------------------------
+
+Our layering model ensures energy conservation by construction, and attempts also to ensure energy preservation where possible. However, as a relatively simple model which is simply a linear combination of closures with weights adjusted according to an approximate `reflectance(...)` function, it is not a physically accurate simulation of the light transport in the layers that we describe.
+
+A number of more accurate treatments of the full light transport in layered media have appeared recently [#Jakob2014] [#Belcour2018] [#Zeltner2018]. These models incorporate the effect of the various modes of reflection and transmission through the whole stack of layers, which generates a final BSDF (or in general BSSRDF) which is not a simple linear combination of the per-layer BSDFs. 
+
+In future, we would like to investigate transitioning to a more accurate model such as this. However, currently it seems all the available models are more expensive to compute and much more complex to implement. 
+
+We attempt at least in our model to incorporate some of the most important effects which arise due to the inter-layer interaction by hand. For example, we allow the roughness of the coating to affect the roughness of (some of) the underlying layers. 
+
+
+Surface orientation
+--------------------------------------------------------------------------------
+
+In transmissive situations, light may be incident from above or below the surface normal. The transmission layer is sensitive to this and ensures that light correctly refracts through the interface. However, the other layers are oriented w.r.t. the *facing* normal, so the scattering behavior is the same when objects are hit from outside and from inside. This again is a non-physical approximation, which is useful in practice as it simplifies the logic without introducing obvious visual artifacts.
+
+
+User-friendliness vs. flexibility
+--------------------------------------------------------------------------------
+
+Our model currently has a fixed number of layers, which includes only two specular layers, while some other popular models (for example, Pixar's PxrSurface [#Hery2017]) allow for a much more configurable number of layers. In a production context, this freedom to tweak the model to a fine degree can be useful in some situations.
+
+However, as mentioned earlier, our general philosophy here is that it is preferable to provide a relatively minimal set of user-friendly parameters with intuitive meanings, with a combination scheme which ensures that any given set of parameters is within the domain of physical plausibility. In those edge cases where the model cannot produce the desired result, a custom shader graph can be authored.
+
+
+Conclusion
+================================================================================
+
+In this document we have described a proposal for a standard, generic surface shader for use in a wide variety of production rendering contexts. This model is based on the current implementation of the Standard Surface shader in the Arnold renderer. We described in detail the 10 closures which comprise the model, and how they are combined to generate the final shader. We provide a reference implementation at the end of the document.
+
+We hope this proposal serves as a useful basis for a more widely adopted standard surface shader implementation.
+
+
+Acknowledgements
+================================================================================
+
+The authors would like to thank Mike Farnsworth, Lee Griggs, Arvid Schneider, Milos Hasan, Michael Nickelsky, Henrik Edstrom, Karl Schmidt, Niklas Harrysson, and Marcel Reinhard for their useful input and feedback.
+
+
+Bibliography 
+================================================================================
+
+[#Andersson2016]:  Zap Andersson. 2016. Physical Material (v1.01). Autodesk white paper.
+
+[#Belcour2017]: Laurent Belcour and Pascal Barla. 2017. A Practical Extension to Microfacet Theory for the Modeling of Varying Iridescence. *ACM Transactions on Graphics*, 36, 4.
+
+[#Belcour2018]: Laurent Belcour. 2018. Efficient Rendering of Layered Materials using an Atomic Decomposition with Statistical Operators. *ACM Transactions on Graphics*, 37, 4.
+
+[#Burley2012]: Brent Burley. 2016. Physically-based Shading at Disney. In *ACM SIGGRAPH 2012 Courses: Practical Physically Based Shading in Film and Game Production*.
+
+[#Estevez2017]: Alejandro Conty Estevez and Christopher Kulla. 2017. Production Friendly Microfacet Sheen BRDF. Sony Pictures Imageworks technical report.
+
+[#Gritz2010]: Larry Gritz, Clifford Stein, Chris Kulla, and Alejandro Conty. 2010. Open Shading Language. In *ACM SIGGRAPH 2010 Talks*.
+
+[#Gulbrandsen2014]: Ole Gulbrandsen. 2014. Artist Friendly Metallic Fresnel. *Journal of Computer Graphics Techniques*, 3, 4.
+
+[#Hery2017]: Christophe Hery, Ryusuke Villemin, Junyi Ling. 2017. Pixar's Foundation for Materials. Pixar technical report.
+
+[#Jakob2014]: Wenzel Jakob, Eugene d'Eon, Otto Jakob, and Steve Marschner. 2014. A Comprehensive Framework for Rendering Layered Materials. *ACM Transactions on Graphics*, 33, 4.
+
+[#Langlands2014]: Anders Langlands. 2014. Physically Based Shader Design in Arnold. In *ACM SIGGRAPH 2014 Talks*.
+
+[#Kulla2017]: Christopher Kulla and Alejandro Conty Estevez. 2017. Revisiting Physically Based Shading at Imageworks. In *ACM SIGGRAPH 2017 Courses: Physically Based Shading in Theory and Practice*.
+
+[#Zeltner2018]: Tizian Zeltner and Wenzel Jakob. 2018. The Layer Laboratory: A Calculus for Additive and Subtractive Composition of Anisotropic Surface Reflectance. *ACM Transactions on Graphics*, 37, 4.
+
+
+Reference implementation
+================================================================================
+
+In the listing below we provide a reference OSL implementation of our shader model. Please note that the code is incomplete as it is still a work in progress. Also note that, for the sake of clarity and compactness, the code does not include certain optimizations, e.g. early exits for shadow rays.
+
+
+
+
+<style class="fallback">body{visibility:hidden}</style>
+<script>
+	markdeepOptions = {
+		tocStyle:'medium'
+	};
+</script>
+<!-- Markdeep: -->
+<script src="style/markdeep-1.04.min.js" charset="utf-8"></script>
