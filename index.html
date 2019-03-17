@@ -12,7 +12,7 @@
 
 This document is a specification of an "uber" surface shader that aims to provide a material representation capable of accurately modeling the vast majority of materials used in practical visual effects and feature animation productions. It follows the design of the Standard Surface shader in the Arnold renderer, whose implementation is relatively uncomplicated and whose user interface consists of a small set of parameters with intuitive meanings and ranges. The document is versioned and will be updated as the specification evolves.
 
-A reference implementation in OSL is provided at the end of this document. Its intention is to specify enough detail for implementation in other renderers that matches the look to a reasonable level of fidelity depending on the purpose.
+We provide a reference implementation [#Georgiev2019], whose intention is to specify enough detail for implementation in other renderers that matches the look to a reasonable level of fidelity depending on the purpose.
 
 
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -23,7 +23,7 @@ Historical background and objectives
 
 Interchange of computer graphics scene assets between different facilities remains a significant problem today, especially with regard to surface appearance. Different renderers and 3D engines use different shading systems, shading languages, and fixed-function pipelines. Furthermore, accurately modeling surface appearance remains a complex and pertinent problem, and is a topic of active scientific research. However, there is a strong need *today* for the industry to find a standardized material model that both covers most common use cases in day-to-day workflows and is easy to use.
 
-Over the years, certain de-facto standard appearance definition frameworks have emerged as different vendors have come to the consensus of separating the definition of materials from the light transport simulation in the scene. Such general frameworks include MaterialX, Material Definition Language (MDL), and Open Shading Language (OSL), which allow specifying the material as a combination of primitive surface reflectance models. These frameworks alone however are not sufficient for look development by end users who should not be expected to build surface shaders from the ground up for day-to-day tasks. There is a need for a standard "uber-shader" parameterization with a well-defined set of parameters that can be tweaked to represent most real-world (as well as imaginary) materials. No such widely adopted material model exists currently, and in this proposal we aim to fill this gap. Our reference implementation is written in OSL [#Gritz2010].
+Over the years, certain de-facto standard appearance definition frameworks have emerged as different vendors have come to the consensus of separating the definition of materials from the light transport simulation in the scene. Such general frameworks include MaterialX, Material Definition Language (MDL), and Open Shading Language (OSL) [#Gritz2010], which allow specifying the material as a combination of primitive surface reflectance models. These frameworks alone however are not sufficient for look development by end users who should not be expected to build surface shaders from the ground up for day-to-day tasks. There is a need for a standard "uber-shader" parameterization with a well-defined set of parameters that can be tweaked to represent most real-world (as well as imaginary) materials. No such widely adopted material model exists currently, and in this proposal we aim to fill this gap. Our reference implementation is written in OSL [#Georgiev2019].
 
 Our proposed model follows closely the Arnold 5 Standard Surface shader, which has strong spiritual predecessors in Anders Langlands' alSurface [#Langlands2014] and Autodesk 3ds 2014 Max's Physical Material [#Andersson2016]. The alSurface shader has served as a de-facto standard in the industry for a while but is no longer actively developed. 3ds Max's Physical Material in turn has been strongly inspired by Allegorithmic's PBR shading model, Disney's Principled Shader, and general industry trends in several real-time 3D engines, and has been production proven with support by all major render engines for 3ds Max.
 
@@ -466,7 +466,7 @@ However, as mentioned earlier, our general philosophy here is that it is prefera
 Conclusion
 ================================================================================
 
-In this document we have described a proposal for a standard, generic surface shader for use in a wide variety of production rendering contexts. This model is based on the current implementation of the Standard Surface shader in the Arnold renderer. We described in detail the 10 closures which comprise the model, and how they are combined to generate the final shader. We provide a reference implementation at the end of the document.
+In this document we have described a proposal for a standard, generic surface shader for use in a wide variety of production rendering contexts. This model is based on the current implementation of the Standard Surface shader in the Arnold renderer. We described in detail the 10 closures which comprise the model, and how they are combined to generate the final shader.
 
 We hope this proposal serves as a useful basis for a more widely adopted standard surface shader implementation.
 
@@ -474,7 +474,7 @@ We hope this proposal serves as a useful basis for a more widely adopted standar
 Acknowledgements
 ================================================================================
 
-The authors would like to thank Mike Farnsworth, Lee Griggs, Arvid Schneider, Milos Hasan, Michael Nickelsky, Henrik Edstrom, Karl Schmidt, Niklas Harrysson, and Marcel Reinhard for their useful input and feedback.
+The authors would like to thank Mike Farnsworth, Lee Griggs, Arvid Schneider, Milos Hasan, Michael Nickelsky, Henrik Edstrom, Karl Schmidt, Niklas Harrysson, Marcel Reinhard, and Davide Pesare for their useful input and feedback.
 
 
 Bibliography 
@@ -490,6 +490,8 @@ Bibliography
 
 [#Estevez2017]: Alejandro Conty Estevez and Christopher Kulla. 2017. Production Friendly Microfacet Sheen BRDF. Sony Pictures Imageworks technical report.
 
+[#Georgiev2019]: Iliyan Georgiev, Jamie Portsmouth, Zap Andersson, Adrien Herubel, Alan King, Shinji Ogaki, Frederic Servant. 2019. A Surface Standard: OSL reference implementation. https://github.com/Autodesk/standard-surface/blob/master/standard_surface_reference.osl.
+
 [#Gritz2010]: Larry Gritz, Clifford Stein, Chris Kulla, and Alejandro Conty. 2010. Open Shading Language. In *ACM SIGGRAPH 2010 Talks*.
 
 [#Gulbrandsen2014]: Ole Gulbrandsen. 2014. Artist Friendly Metallic Fresnel. *Journal of Computer Graphics Techniques*, 3, 4.
@@ -504,13 +506,14 @@ Bibliography
 
 [#Zeltner2018]: Tizian Zeltner and Wenzel Jakob. 2018. The Layer Laboratory: A Calculus for Additive and Subtractive Composition of Anisotropic Surface Reflectance. *ACM Transactions on Graphics*, 37, 4.
 
+<! --
 
 Reference implementation
 ================================================================================
 
 In the listing below we provide a reference OSL implementation of our shader model. Please note that the code is incomplete as it is still a work in progress. Also note that, for the sake of clarity and compactness, the code does not include certain optimizations, e.g. early exits for shadow rays.
 
-
+-->
 
 
 <style class="fallback">body{visibility:hidden}</style>
