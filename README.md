@@ -13,8 +13,8 @@ A white paper specifying an "uber" surface shader that aims to provide a materia
 
 ### Resources
 
-* [White paper](https://autodesk.github.io/standard-surface/)
-* [OSL reference implementation](standard_surface_reference.osl)
+* **[White paper](https://autodesk.github.io/standard-surface/)** – typeset in [Markdeep](https://casual-effects.com/markdeep/), mobile and print friendly
+* **[Reference implementation](standard_surface_reference.osl)** – written in [OSL](https://github.com/imageworks/OpenShadingLanguage), work in progress
 
 <br/>
 
