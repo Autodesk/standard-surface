@@ -25,7 +25,7 @@ Interchange of computer graphics scene assets between different facilities remai
 
 Over the years, certain de-facto standard appearance definition frameworks have emerged as different vendors have come to the consensus of separating the definition of materials from the light transport simulation in the scene. Such general frameworks include MaterialX, Material Definition Language (MDL), and Open Shading Language (OSL) [#Gritz2010], which allow specifying the material as a combination of primitive surface reflectance models. These frameworks alone however are not sufficient for look development by end users who should not be expected to build surface shaders from the ground up for day-to-day tasks. There is a need for a standard uber-shader parametrization with a well-defined set of parameters that can be tweaked to represent most real-world (as well as imaginary) materials. In this proposal we aim to fill this gap; our reference implementation is written in OSL [#Georgiev2019].
 
-Our proposed model follows closely the Arnold 5 Standard Surface shader, which has strong spiritual predecessors in Anders Langlands' alSurface [#Langlands2014] and Autodesk 3ds Max's Physical Material [#Andersson2016]. The alSurface shader has served as a de-facto standard in the industry for a while but is no longer actively developed. 3ds Max's Physical Material in turn has been strongly inspired by Allegorithmic's PBR shading model [#Damez2018], Disney's Principled Shader [#Burley2012], and general industry trends in several real-time 3D engines, and has been production proven with support by all major render engines for 3ds Max.
+Our proposed model follows closely the Arnold 5 Standard Surface shader, which has strong spiritual predecessors in Anders Langlands' alSurface [#Langlands2014] and Autodesk 3ds Max's Physical Material [#Andersson2016]. The alSurface shader has served as a de-facto standard in the industry for a while but is no longer actively developed. 3ds Max's Physical Material in turn has been strongly inspired by Allegorithmic's PBR shading model [#McDermott2018], Disney's Principled Shader [#Burley2012], and general industry trends in several real-time 3D engines, and has been production proven with support by all major render engines for 3ds Max.
 
 In this proposal, rather than providing parameters for every conceivable case, we intentionally try to boil the set of parameters down to only those that are most useful in practice. We also fix the combination of primitive reflectance models to ensure that the users work within the bounds of what is physically plausible as much as possible. We aim for the overall behavior to be simple, logical, intuitive, and understandable, so that the model covers most day-to-day use cases. For the few it does not cover, one may need to use a renderer-specific shader, or build a bespoke shading network.
 
@@ -116,18 +116,15 @@ Name           | Type  | Default | Description
 Coating
 --------------------------------------------------------------------------------
 
-The topmost scattering layer is a dielectric coating with a GGX microfacet BRDF closure `coat_brdf`. As a dielectric, this BRDF is not energy preserving (i.e. its directional reflectance is generally less than one) as it obeys Fresnel reflection laws. The layer is assumed to be infinitely thin, and the remaining non-reflected light is passed directly to the underlying layer without refraction. The reflection color is fixed to white.
+The topmost scattering layer is a dielectric coating with a GGX microfacet BRDF closure `coat_brdf`. As a dielectric, this BRDF is not energy preserving (i.e. its directional reflectance is generally less than one) as it obeys Fresnel reflection laws. The layer is assumed to be infinitely thin, and the remaining non-reflected light is passed directly to the underlying layer without refraction. The reflection color is fixed to white, though the coat medium color can be user controlled.
 
-To ensure energy preservation when blending with the underlying layers, we need the fraction of energy that is transmitted through the coat. This fraction is equal to one minus the cosine-weighted BRDF integrated over the hemisphere above the surface. This integral generally has to be estimated numerically, although a crude few-sample approximation typically suffices. We rely on `reflectance(coat_bsdf)` to compute this.
-
-The resulting closure combination formula is
+The closure combination formula is
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
-coat_layer = coat * coat_brdf(coat_normal, coat_roughness_x, coat_roughness_y, coat_IOR) +
-    lerp(coat, white, coat_color * (1 - reflectance(coat_brdf))) * emission_specular_mixture
+coat_layer = coat * coat_brdf(coat_normal, coat_roughness_x, coat_roughness_y, coat_IOR) + lerp(coat, white, coat_color * (1 - reflectance(coat_brdf))) * emission_specular_mixture
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-where `lerp(t, a, b) = (1 - t) * a + t * b`, and where `coat_roughness_x` and `coat_roughness_y` are computed as
+where `lerp(t, a, b) = (1 - t) * a + t * b`, and where the anisotropic roughness parameters `coat_roughness_x` and `coat_roughness_y` are computed as
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
 float aspect = sqrt(1 - clamp(coat_anisotropy, 0, 0.98));
@@ -193,7 +190,7 @@ Name                 | Type  | Default | Description
 **`emission`**       | float | `0`     | emission color multiplier
 **`emission_color`** | color | `1,1,1` | emission color
 
-![Figure [emission]: Texture map representing hot lava connected to **`emission_color`**.](images/emission.jpg width=50%)
+![Figure [emission]: Texture map representing hot lava connected to **`emission_color`**.](images/emission.jpg width=40%)
 
 
 Metal
@@ -477,7 +474,7 @@ Bibliography
 
 [#Burley2012]: Brent Burley. 2016. Physically-based Shading at Disney. In *ACM SIGGRAPH 2012 Courses: Practical Physically Based Shading in Film and Game Production*.
 
-[#Damez2018]: Cyrille Damez and Nicolas Wirrmann. 2018. The PBR Guide. Allegorithmic. https://www.allegorithmic.com/pbr-guide.
+[#McDermott2018]: Wes McDermott. 2018. The PBR Guide. Allegorithmic. https://www.allegorithmic.com/pbr-guide.
 
 [#Estevez2017]: Alejandro Conty Estevez and Christopher Kulla. 2017. Production Friendly Microfacet Sheen BRDF. Sony Pictures Imageworks technical report.
 
