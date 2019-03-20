@@ -5,7 +5,7 @@
 **A Surface Standard**
  Iliyan Georgiev, Jamie Portsmouth, Zap Andersson, Adrien Herubel, Alan King, Shinji Ogaki, Frederic Servant
  <br/>
- *version 1.0.0*
+ *version 1.0.1.wip*
  ![](images/title.jpg width="75%")
  ![](images/autodesk-logo.svg width="150px")
 
@@ -233,7 +233,7 @@ Name                       | Type  | Default | Description
 Specular reflection
 --------------------------------------------------------------------------------
 
-This layer models a GGX microfacet dielectric BRDF `specular_brdf(...)`, conceptually right under the coating. Similarly to the coating, this BRDF is not itself energy conserving due to Fresnel laws, and the energy that is not reflected is completely transmitted to the underlying layers. The closure combination we use which expresses the energy balance between the reflected and transmitted specular lobes is then
+This layer models a GGX microfacet dielectric BRDF `specular_brdf`, conceptually right under the coating. Similarly to the coating, this BRDF is not itself energy conserving due to Fresnel laws, and the energy that is not reflected is completely transmitted to the underlying layers. The closure combination we use which expresses the energy balance between the reflected and transmitted specular lobes is then
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
 specular_reflection_layer = specular * specular_color * specular_brdf(...) + (1 - specular_color * specular * reflectance(specular_brdf)) * transmission_sheen_mix
@@ -263,7 +263,7 @@ Name                       | Type  | Default | Description
 Specular transmission
 --------------------------------------------------------------------------------
 
-This layer models a statistical blend (according to the **`transmission`** parameter) of either transmission through the bottom of the specular layer via a GGX microfacet BTDF `specular_btdf(...)`, or scattering from a diffuse base layer (`base_layer`). The closure combination is given by
+This layer models a statistical blend (according to the **`transmission`** parameter) of either transmission through the bottom of the specular layer via a GGX microfacet BTDF `specular_btdf`, or scattering from a diffuse base layer (`base_layer`). The closure combination is given by
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
 transmission_sheen_mix = transmission * transmission_color * specular_btdf(...) + (1 - transmission) * sheen_layer
@@ -271,9 +271,9 @@ transmission_sheen_mix = transmission * transmission_color * specular_btdf(...) 
 
 where the `sheen_layer` closure is defined below.
 
-The transmission closure `specular_btdf` shares many parameters with `specular_brdf`; for example, the roughness of is the same as **`specular_roughness`**. Rough reflection with sharp transmission, though not physically correct, can be achieved by making the coating rough and the specular reflection sharp. Just like the specular BRDF, this BTDF can be modulated by a thin film by reusing the same parameters.
+The transmission closure `specular_btdf` shares many parameters with `specular_brdf`; for example, the roughness of `​spec_btdf​` is by default the same as **`specular_roughness`**. It can be additionally increased or decreased via the **`​transmission_extra_roughness`** parameter, though this is not physically correct. Just like the specular BRDF, this BTDF can be modulated by a thin film by reusing the same parameters.
 
-If the **`thin_walled`** boolean parameter is `false`, then the surface is considered to be a boundary of a finite-sized solid object. Thus, light refracts when entering and leaving the object, according to the `specular_btdf(...)` closure. If **`thin_walled`** is `true`, the surface is double-sided, representing an infinitely thin shell (such as an idealized tree leaf or paper), and light therefore does not undergo refraction upon specular transmission to the opposite side. In this case the refractive index is set to that of the surrounding medium (e.g. 1.0 for vacuum), and dispersion and thin film are disabled.
+If the **`thin_walled`** boolean parameter is `false`, then the surface is considered to be a boundary of a finite-sized solid object. Thus, light refracts when entering and leaving the object, according to the `specular_btdf` closure. If **`thin_walled`** is `true`, the surface is double-sided, representing an infinitely thin shell (such as an idealized tree leaf or paper), and light therefore does not undergo refraction upon specular transmission to the opposite side. In this case the refractive index is set to that of the surrounding medium (e.g. 1.0 for vacuum), and dispersion and thin film are disabled.
 
 We also allow specifying the properties of a homogeneous medium interior to the object. This is useful for modeling fairly thick liquids or where there is enough of the medium for scattering to be visible, such as honey, a deep body of water, opalescent glass, or milky glass. The **`transmission_color`** and **`transmission_depth`** parameter pair is a commonly used artist-friendly way to set the medium absorption coefficient, while **`transmission_scatter`** directly sets the medium scattering coefficient. These parameters allow the rendering of objects such as colored glass or murky water.
 
@@ -287,6 +287,7 @@ Name                                   | Type    | Default | Description
 **`transmission_scatter`***            | color   | `0,0,0` | color to simulate the blurriness that is the result of light scattering inside the object
 **`transmission_scatter_anisotropy`*** | float   | `0`     | the anisotropy of the phase function of the medium inside the object, range `[-1,1]`
 **`transmission_dispersion`***         | float   | `0`     | dispersion Abbe number, describing how much the index of refraction varies across wavelengths
+**`​transmission_extra_roughness`**     | float   | `0`     | additional (positive or negative) roughness on top of **`specular_roughness`**
 **`specular_roughness`**               | float   | `0.2`   | refraction roughness of `specular_btdf`; squared internally before passed to the BTDF to achieve a more uniform roughness look over the parameter range `[0,1]`
 **`specular_IOR`**                     | float   | `1.5`   | refractive index of `specular_btdf`
 **`specular_anisotropy`***             | float   | `0`     | reflection anisotropy of `specular_btdf`, range `[0,1]`
@@ -376,7 +377,7 @@ Name                     | Type  | Default | Description
 Subsurface scattering
 --------------------------------------------------------------------------------
 
-For solid objects (for which **`thin_walled`** is `false`), subsurface scattering models the effect of light propagation and diffusion under the surface, where in general the exiting ray leaves at a different surface location than the incident ray. This effect is represented by the `subsurface(...)` closure, for which we do not stipulate a specific rendering model to be used, e.g. based on diffusion-profile surface illumination blurring  or brute-force subsurface ray tracing.
+For solid objects (for which **`thin_walled`** is `false`), subsurface scattering models the effect of light propagation and diffusion under the surface, where in general the exiting ray leaves at a different surface location than the incident ray. This effect is represented by the `subsurface` closure, for which we do not stipulate a specific rendering model to be used, e.g. based on diffusion-profile surface illumination blurring  or brute-force subsurface ray tracing.
 
 (###) Shader parameters: subsurface scattering
 
@@ -404,10 +405,12 @@ Scalar vs. RGB closure weighting
 --------------------------------------------------------------------------------
 
 Consider our formula for the specular reflection layer, in which we have the closure combination:
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
-spec_refl_layer(...) = specular * specular_color * specular_brdf(...) + (1 - specular_color * specular * reflectance(specular_brdf)) * spec_trans_layer(...)
+specular_reflection_layer = specular * specular_color * specular_brdf(...) + (1 - specular_color * specular * reflectance(specular_brdf)) * transmission_sheen_mix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Here the **`specular_color`** factor multiplying the `reflectance(...)` term is included to ensure energy *preservation*. For example, if the reflection is pure red, only the complementary cyan color is transmitted into the underlayer. This allows preventing the loss of energy in the combined model and creating multi-layer materials with high albedo. But while it is physically correct, it can also make it harder for an artist to control the appearance of a complementary color tint in the underlying lobes.
+
+Here the **`specular_color`** factor multiplying `reflectance(specular_brdf)` is included to ensure energy _preservation_. For example, if the reflection is pure red, only the complementary cyan color is transmitted into the underlayer. This allows preventing the loss of energy in the combined model and creating multi-layer materials with high albedo. But while it is physically correct, it can also make it harder for an artist to control the appearance of a complementary color tint in the underlying lobes.
 
 An alternative approach we considered (used, e.g., in 3ds Max's Physical Material model), is to keep the multiplicative closure factors as scalars, e.g. in this case **`specular_color`** would be omitted from the closure weight. This then technically violates energy preservation (i.e. energy is unphysically dissipated) and makes it difficult to create high-albedo materials with colored specular reflection. However, such behavior can be more intuitive to artists.
 
