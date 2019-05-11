@@ -287,7 +287,7 @@ Name                                   | Type    | Default | Description
 **`transmission_scatter`***            | color   | `0,0,0` | color to simulate the blurriness that is the result of light scattering inside the object
 **`transmission_scatter_anisotropy`*** | float   | `0`     | the anisotropy of the phase function of the medium inside the object, range `[-1,1]`
 **`transmission_dispersion`***         | float   | `0`     | dispersion Abbe number, describing how much the index of refraction varies across wavelengths
-**`​transmission_extra_roughness`**     | float   | `0`     | additional (positive or negative) roughness on top of **`specular_roughness`**
+**`​transmission_extra_roughness`***    | float   | `0`     | additional (positive or negative) roughness on top of **`specular_roughness`**
 **`specular_roughness`**               | float   | `0.2`   | refraction roughness of `specular_btdf`; squared internally before passed to the BTDF to achieve a more uniform roughness look over the parameter range `[0,1]`
 **`specular_IOR`**                     | float   | `1.5`   | refractive index of `specular_btdf`
 **`specular_anisotropy`***             | float   | `0`     | reflection anisotropy of `specular_btdf`, range `[0,1]`
