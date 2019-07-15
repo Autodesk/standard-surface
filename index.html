@@ -125,10 +125,10 @@ coat_brdf(coat_normal, coat_roughness, coat_anisotropy, coat_rotation, coat_IOR)
 -->
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
-coat_layer = coat * coat_brdf(...) + lerp(coat, white, coat_color * (1 - reflectance(coat_brdf))) * emission_specular_mixture
+coat_layer = coat * coat_brdf(...) + lerp(white, coat_color * (1 - reflectance(coat_brdf)), coat) * emission_specular_mixture
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-where `lerp(t, a, b) = (1 - t) * a + t * b`, and the `emission_specular_mixture` closure is defined in the following subsection.
+where `lerp(a, b, t) = (1 - t) * a + t * b`, and the `emission_specular_mixture` closure is defined in the following subsection.
 
 In the above closure formula, `white` denotes a constant white color. The coat layer is then effectively a statistical mix between a "no-op" passthrough (when the `coat` parameter goes to zero) and a dielectric slab with an embedded absorbing medium.
 
@@ -141,7 +141,7 @@ In a real physical material, light scattered by underlying layers is tinted/blur
 	<li>
 		We provide an option for the coating roughness to increase the roughness of the other GGX BSDFs, namely `metal_brdf`, `specular_brdf`, and `specular_btdf`. The remaining BSDFs are not modulated as they are already rough. The formula for modulating a given **`roughness`** is
 		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
-		roughness = lerp(coat * coat_affect_roughness * coat_roughness, roughness, 1)
+		roughness = lerp(roughness, 1, coat * coat_affect_roughness * coat_roughness)
 		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	</li>
 </ul>
