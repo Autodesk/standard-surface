@@ -266,26 +266,30 @@ Specular transmission
 This layer models a statistical blend (according to the **`transmission`** parameter) of either transmission through the bottom of the specular layer via a GGX microfacet BTDF `specular_btdf`, or scattering from a diffuse base layer (`base_layer`). The closure combination is given by
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
-transmission_sheen_mix = transmission * transmission_color * specular_btdf(...) + (1 - transmission) * sheen_layer
+transmission_sheen_mix = transmission * transm_color * specular_btdf(...) + (1 - transmission) * sheen_layer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-where the `sheen_layer` closure is defined below.
+where the `sheen_layer` closure is defined in the following subsection and, as explained below,
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+transm_color = (transmission_depth == 0) ? transmission_color : 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The transmission closure `specular_btdf` shares many parameters with `specular_brdf`; for example, the roughness of `​spec_btdf​` is by default the same as **`specular_roughness`**. It can be additionally increased or decreased via the **`​transmission_extra_roughness`** parameter, though this is not physically correct. Just like the specular BRDF, this BTDF can be modulated by a thin film by reusing the same parameters.
 
 If the **`thin_walled`** boolean parameter is `false`, then the surface is considered to be a boundary of a finite-sized solid object. Thus, light refracts when entering and leaving the object, according to the `specular_btdf` closure. If **`thin_walled`** is `true`, the surface is double-sided, representing an infinitely thin shell (such as an idealized tree leaf or paper), and light therefore does not undergo refraction upon specular transmission to the opposite side. In this case the refractive index is set to that of the surrounding medium (e.g. 1.0 for vacuum), and dispersion and thin film are disabled.
 
-We also allow specifying the properties of a homogeneous medium interior to the object. This is useful for modeling fairly thick liquids or where there is enough of the medium for scattering to be visible, such as honey, a deep body of water, opalescent glass, or milky glass. The **`transmission_color`** and **`transmission_depth`** parameter pair is a commonly used artist-friendly way to set the medium absorption coefficient, while **`transmission_scatter`** directly sets the medium scattering coefficient. These parameters allow the rendering of objects such as colored glass or murky water.
+We also allow specifying the properties of a homogeneous medium interior to the object, with or without scattering. This is useful for modeling a range of materials, ranging from clear or colored (absorbing-only) glass and liquids to materials with visually significant scattering such as honey, a deep body of water, opalescent glass, or milky glass. The **`transmission_color`** and **`transmission_depth`** parameter pair is a commonly used artist-friendly way to set the medium extinction coefficient, while **`transmission_scatter`** directly sets the medium scattering coefficient. When **`transmission_depth`** is zero, the interior medium is nil, and **`transmission_color`** is used to tint refraction multiplicatively by a constant amount, directly in the closure mixture (see above code snippet). When **`transmission_depth`** is positive, the tinting is governed by the interior medium via Beer's law.
 
 (###) Shader parameters: specular transmission
 
 Name                                   | Type    | Default | Description
 ---------------------------------------|---------|---------|------------
 **`transmission`***                    | float   | `0`     | transmission weight
-**`transmission_color`***              | color   | `1,1,1` | transmission color, tint due to absorption
-**`transmission_depth`***          | float   | `0`     | the distance travelled inside the material by white light before its color becomes exactly **`transmission_color`** by Beer's law
-**`transmission_scatter`***            | color   | `0,0,0` | color to simulate the blurriness that is the result of light scattering inside the object
-**`transmission_scatter_anisotropy`*** | float   | `0`     | the anisotropy of the phase function of the medium inside the object, range `[-1,1]`
+**`transmission_color`***              | color   | `1,1,1` | transmission color, i.e. tint
+**`transmission_depth`***              | float   | `0`     | the distance travelled inside the material by white light before its color becomes exactly **`transmission_color`** by Beer's law, determining the extinction coefficient of the interior medium; if zero, **`transmission_color`** acts as a constant (on-surface) transmission tint; range `[0,infinity)`
+**`transmission_scatter`***            | color   | `0,0,0` | scattering coefficient of the interior medium
+**`transmission_scatter_anisotropy`*** | float   | `0`     | the anisotropy of the Henyey-Greenstein phase function of the interior medium; range `[-1,1]`
 **`transmission_dispersion`***         | float   | `0`     | dispersion Abbe number, describing how much the index of refraction varies across wavelengths
 **`​transmission_extra_roughness`***    | float   | `0`     | additional (positive or negative) roughness on top of **`specular_roughness`**
 **`specular_roughness`**               | float   | `0.2`   | refraction roughness of `specular_btdf`; squared internally before passed to the BTDF to achieve a more uniform roughness look over the parameter range `[0,1]`
