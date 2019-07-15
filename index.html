@@ -132,18 +132,25 @@ where `lerp(a, b, t) = (1 - t) * a + t * b`, and the `emission_specular_mixture`
 
 In the above closure formula, `white` denotes a constant white color. The coat layer is then effectively a statistical mix between a "no-op" passthrough (when the `coat` parameter goes to zero) and a dielectric slab with an embedded absorbing medium.
 
-In a real physical material, light scattered by underlying layers is tinted/blurred when transmitted through a colored/rough coating. Capturing these effects accurately in a renderer requires simulating the light interactions between the individual layers in order. Since our model is a simple linear combination of closures that are evaluated independently, we emulate these two effects:
+In a real physical material, light scattered by underlying layers is tinted and blurred when transmitted through a colored/rough coating. Capturing these effects accurately in a renderer requires simulating the light interactions between the individual layers in order. Since our model is a simple linear combination of closures that are evaluated independently, we emulate these effects:
 
 <ul>
-	<li>
-		Tinting all layers below the coating is achieved by scaling their closures by the **`coat_color`** parameter, which can be interpreted as the absorption effect within the coat medium tinting the reflection from the underlying layers (i.e. energy is absorbed by a tinted coat layer).
-	</li>
-	<li>
-		We provide an option for the coating roughness to increase the roughness of the other GGX BSDFs, namely `metal_brdf`, `specular_brdf`, and `specular_btdf`. The remaining BSDFs are not modulated as they are already rough. The formula for modulating a given **`roughness`** is
-		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
-		roughness = lerp(roughness, 1, coat * coat_affect_roughness * coat_roughness)
-		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	</li>
+    <li>
+        Tinting all layers below the coating is achieved by scaling their closures by the **`coat_color`** parameter, which can be interpreted as the absorption effect within the coat medium tinting the reflection from the underlying layers (i.e. energy is absorbed by a tinted coat layer).
+    </li>
+    <li>
+        With a dielectric coating on top of a substrate, a fraction of the light exhibits internal reflection inside the coating and goes back down to the substrate to reflect again, becoming darker and more saturated. This effect can be emulated via the **`coat_affect_color`** parameter, which is used as an exponent to the substrate color, currently limited to diffuse reflection and sub-surface scattering:
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+        base_color = pow(base_color, 1.0 + (coat * coat_affect_color))
+        subsurface_color = pow(subsurface_color, 1.0 + (coat * coat_affect_color))
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    </li>
+    <li>
+        We also provide an option for the coating roughness to increase the roughness of the other GGX BSDFs, namely `metal_brdf`, `specular_brdf`, and `specular_btdf`. The remaining BSDFs are not modulated as they are already rough. The formula for modulating a given **`roughness`** is
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C
+        roughness = lerp(roughness, 1, coat * coat_affect_roughness * coat_roughness)
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    </li>
 </ul>
 
 
@@ -152,13 +159,13 @@ In a real physical material, light scattered by underlying layers is tinted/blur
 Name                         | Type  | Default  | Description
 -----------------------------|-------|----------|------------
 **`coat`**                   | float | `0`      | reflection weight (reflection color is fixed to white)
-**`coat_color`**             | color | `1,1,1`  | tint color for the light coming from the layers below
+**`coat_color`**             | color | `1,1,1`  | tint color for the light coming from all layers below
 **`coat_roughness`**         | float | `0.1`    | coat reflection roughness; squared internally before passed to the BSDF to achieve a more linear perceptual response [#Burley2012]
 **`coat_anisotropy`***       | float | `0`      | reflection anisotropy of `coat_brdf`; range `[0,1]`
 **`coat_rotation`***         | float | `0`      | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
 **`coat_IOR`**               | float | `1.5`    | refractive index of `coat_brdf`
 **`coat_normal`**            | vector | `0,0,0` | shading normal for the coating reflections; optional, overrides the default shading normal; has no effect on the closure combination weights
-**`coat_affect_color`***     | float | `0`      | how much to affect the color of the diffuse and subsurface scattering layers below; range `[0,1]`
+**`coat_affect_color`***     | float | `0`      | how much to additionally modulate diffuse reflection and subsurface scattering saturation; range `[0,1]`
 **`coat_affect_roughness`*** | float | `0`      | how much to affect the roughness of the specular reflection layers below; range `[0,1]`
 
 ![](images/coat1.jpg width=70%) ![](images/coat2.jpg width=70%) ![](images/coat3.jpg width=70%)
