@@ -154,12 +154,12 @@ Name                         | Type  | Default  | Description
 **`coat`**                   | float | `0`      | reflection weight (reflection color is fixed to white)
 **`coat_color`**             | color | `1,1,1`  | tint color for the light coming from the layers below
 **`coat_roughness`**         | float | `0.1`    | coat reflection roughness; squared internally before passed to the BSDF to achieve a more linear perceptual response [#Burley2012]
-**`coat_anisotropy`***       | float | `0`      | reflection anisotropy of `coat_brdf`, range `[0,1]`
-**`coat_rotation`***         | float | `0`      | orientation of anisotropy, range `[0,1]` (where `1` means 180 degrees)
+**`coat_anisotropy`***       | float | `0`      | reflection anisotropy of `coat_brdf`; range `[0,1]`
+**`coat_rotation`***         | float | `0`      | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
 **`coat_IOR`**               | float | `1.5`    | refractive index of `coat_brdf`
 **`coat_normal`**            | vector | `0,0,0` | shading normal for the coating reflections; optional, overrides the default shading normal; has no effect on the closure combination weights
-**`coat_affect_color`***     | float | `0`      | how much to affect the color of the diffuse and subsurface scattering layers below, range `[0,1]`
-**`coat_affect_roughness`*** | float | `0`      | how much to affect the roughness of the specular reflection layers below, range `[0,1]`
+**`coat_affect_color`***     | float | `0`      | how much to affect the color of the diffuse and subsurface scattering layers below; range `[0,1]`
+**`coat_affect_roughness`*** | float | `0`      | how much to affect the roughness of the specular reflection layers below; range `[0,1]`
 
 ![](images/coat1.jpg width=70%) ![](images/coat2.jpg width=70%) ![](images/coat3.jpg width=70%)
 <div class="shifted-caption">
@@ -217,8 +217,8 @@ Name                       | Type  | Default | Description
 **`specular`**             | float | `1`     | scalar multiplier to **`specular_color`**
 **`specular_color`**       | color | `1,1,1` | reflection color at grazing incidence (i.e. around silhouettes)
 **`specular_roughness`**   | float | `0.2`   | reflection roughness; squared internally before passed to the BSDF in order to achieve a more uniform roughness look over the parameter range
-**`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `metal_brdf`, range `[0,1]`
-**`specular_rotation`***   | float | `0`     | orientation of anisotropy, range `[0,1]` (where `1` means 180 degrees)
+**`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `metal_brdf`; range `[0,1]`
+**`specular_rotation`***   | float | `0`     | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
 **`thin_film_thickness`*** | float | `0`     | thickness of the film (in nanometres)
 **`thin_film_IOR`***       | float | `1.5`   | refractive  index of the film
 
@@ -249,8 +249,8 @@ Name                       | Type  | Default | Description
 **`specular_color`**       | color | `1,1,1` | specular reflection color
 **`specular_roughness`**   | float | `0.2`   | reflection roughness; squared internally before passed to the BSDF to achieve a more uniform roughness look over the parameter range 
 **`specular_IOR`**         | float | `1.5`   | refractive index of `specular_brdf`
-**`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `specular_brdf`, range `[0,1]`
-**`specular_rotation`***   | float | `0`     | orientation of anisotropy, range `[0,1]` (`1` means 180 degrees)
+**`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `specular_brdf`; range `[0,1]`
+**`specular_rotation`***   | float | `0`     | orientation of anisotropy; range `[0,1]` (`1` means 180 degrees)
 **`thin_film_thickness`*** | float | `0`     | thickness of the film (in nanometres)
 **`thin_film_IOR`***       | float | `1.5`   | refractive index of the film
 
@@ -294,8 +294,8 @@ Name                                   | Type    | Default | Description
 **`​transmission_extra_roughness`***    | float   | `0`     | additional (positive or negative) roughness on top of **`specular_roughness`**
 **`specular_roughness`**               | float   | `0.2`   | refraction roughness of `specular_btdf`; squared internally before passed to the BTDF to achieve a more uniform roughness look over the parameter range `[0,1]`
 **`specular_IOR`**                     | float   | `1.5`   | refractive index of `specular_btdf`
-**`specular_anisotropy`***             | float   | `0`     | reflection anisotropy of `specular_btdf`, range `[0,1]`
-**`specular_rotation`***               | float   | `0`     | orientation of anisotropy, range `[0,1]` (where `1` means 180 degrees)
+**`specular_anisotropy`***             | float   | `0`     | reflection anisotropy of `specular_btdf`; range `[0,1]`
+**`specular_rotation`***               | float   | `0`     | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
 **`thin_film_thickness`***             | float   | `0`     | thickness of the film
 **`thin_film_IOR`***                   | float   | `1.5`   | refractive index of the film
 **`thin_walled`***                     | boolean | `false` | if `true`, the object is considered infinitely thin and the surface double-sided
@@ -323,7 +323,7 @@ Name                   | Type  | Default | Description
 -----------------------|-------|---------|------------
 **`sheen`***           | float | `0.8`   | reflection weight of `sheen_brdf`
 **`sheen_color`***     | color | `1,1,1` | reflection color of `sheen_brdf`
-**`sheen_roughness`*** | float | `0.3`   | reflection roughness of `sheen_brdf`, range `[0,1]`
+**`sheen_roughness`*** | float | `0.3`   | reflection roughness of `sheen_brdf`; range `[0,1]`
 
 ![](images/sheen1.jpg width=99%) ![](images/sheen2.jpg width=99%) ![](images/sheen3.jpg width=99%)
 <div class="shifted-caption">
@@ -391,7 +391,7 @@ Name                         | Type  | Default | Description
 **`subsurface_color`***      | color | `1,1,1` | subsurface color, used by `subsurface(...)` closure 
 **`subsurface_radius`***     | color | `1,1,1` | subsurface radii (i.e. mean free paths) of the red, green, and blue channels
 **`subsurface_scale`***      | float | `1`     | scalar scale for **`subsurface_radius`**
-**`subsurface_anisotropy`*** | float | `0`     | anisotropy of the subsurface medium phase function, range `[-1,1]`
+**`subsurface_anisotropy`*** | float | `0`     | anisotropy of the subsurface medium phase function; range `[-1,1]`
 
 ![](images/subsurface1.jpg width=99%) ![](images/subsurface2.jpg width=99%) ![](images/subsurface3.jpg width=99%)
 <div class="shifted-caption">
