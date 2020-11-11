@@ -219,8 +219,8 @@ Rainbow-like iridescence effects occur, due to interference, when a thin refract
 
 Name                       | Type  | Default | Description
 ---------------------------|-------|---------|------------
-**`base`**                 | float | `0.8`   | scalar multiplier to **`base_color`**
-**`base_color`**           | color | `1,1,1` | reflection color at normal incidence (i.e. surface seen from straight up)
+**`base`**                 | float | `1`     | scalar multiplier to **`base_color`**
+**`base_color`**           | color | `0.8,0.8,0.8` | reflection color at normal incidence (i.e. surface seen from straight up)
 **`specular`**             | float | `1`     | scalar multiplier to **`specular_color`**
 **`specular_color`**       | color | `1,1,1` | reflection color at grazing incidence (i.e. around silhouettes)
 **`specular_roughness`**   | float | `0.2`   | reflection roughness; squared internally before passed to the BSDF in order to achieve a more uniform roughness look over the parameter range
