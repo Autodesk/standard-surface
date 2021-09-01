@@ -5,7 +5,7 @@
 **Autodesk Standard Surface**
  Iliyan Georgiev, Jamie Portsmouth, Zap Andersson, Adrien Herubel, Alan King, Shinji Ogaki, Frederic Servant
  <br/>
- *version 1.0.1*
+ *version 1.0.1.1*
  ![](images/title.jpg width="75%")
  ![](images/autodesk-logo.svg width="150px")
 
@@ -162,7 +162,7 @@ Name                         | Type  | Default  | Description
 **`coat_color`**             | color | `1,1,1`  | tint color for the light coming from all layers below
 **`coat_roughness`**         | float | `0.1`    | coat reflection roughness; squared internally before passed to the BSDF to achieve a more linear perceptual response [#Burley2012]
 **`coat_anisotropy`***       | float | `0`      | reflection anisotropy of `coat_brdf`; range `[0,1]`
-**`coat_rotation`***         | float | `0`      | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
+**`coat_rotation`***         | float | `0`      | orientation of anisotropy; range `[0,1]` (where `1` means 360 degrees)
 **`coat_IOR`**               | float | `1.5`    | refractive index of `coat_brdf`
 **`coat_normal`**            | vector | `0,0,0` | shading normal for the coating reflections; optional, overrides the default shading normal; has no effect on the closure combination weights
 **`coat_affect_color`***     | float | `0`      | how much to additionally modulate diffuse reflection and subsurface scattering saturation; range `[0,1]`
@@ -225,7 +225,7 @@ Name                       | Type  | Default | Description
 **`specular_color`**       | color | `1,1,1` | reflection color at grazing incidence (i.e. around silhouettes)
 **`specular_roughness`**   | float | `0.2`   | reflection roughness; squared internally before passed to the BSDF in order to achieve a more uniform roughness look over the parameter range
 **`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `metal_brdf`; range `[0,1]`
-**`specular_rotation`***   | float | `0`     | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
+**`specular_rotation`***   | float | `0`     | orientation of anisotropy; range `[0,1]` (where `1` means 360 degrees)
 **`thin_film_thickness`*** | float | `0`     | thickness of the film (in nanometres)
 **`thin_film_IOR`***       | float | `1.5`   | refractive  index of the film
 
@@ -257,7 +257,7 @@ Name                       | Type  | Default | Description
 **`specular_roughness`**   | float | `0.2`   | reflection roughness; squared internally before passed to the BSDF to achieve a more uniform roughness look over the parameter range 
 **`specular_IOR`**         | float | `1.5`   | refractive index of `specular_brdf`
 **`specular_anisotropy`*** | float | `0`     | reflection anisotropy of `specular_brdf`; range `[0,1]`
-**`specular_rotation`***   | float | `0`     | orientation of anisotropy; range `[0,1]` (`1` means 180 degrees)
+**`specular_rotation`***   | float | `0`     | orientation of anisotropy; range `[0,1]` (`1` means 360 degrees)
 **`thin_film_thickness`*** | float | `0`     | thickness of the film (in nanometres)
 **`thin_film_IOR`***       | float | `1.5`   | refractive index of the film
 
@@ -302,7 +302,7 @@ Name                                   | Type    | Default | Description
 **`specular_roughness`**               | float   | `0.2`   | refraction roughness of `specular_btdf`; squared internally before passed to the BTDF to achieve a more uniform roughness look over the parameter range `[0,1]`
 **`specular_IOR`**                     | float   | `1.5`   | refractive index of `specular_btdf`
 **`specular_anisotropy`***             | float   | `0`     | reflection anisotropy of `specular_btdf`; range `[0,1]`
-**`specular_rotation`***               | float   | `0`     | orientation of anisotropy; range `[0,1]` (where `1` means 180 degrees)
+**`specular_rotation`***               | float   | `0`     | orientation of anisotropy; range `[0,1]` (where `1` means 360 degrees)
 **`thin_film_thickness`***             | float   | `0`     | thickness of the film
 **`thin_film_IOR`***                   | float   | `1.5`   | refractive index of the film
 **`thin_walled`***                     | boolean | `false` | if `true`, the object is considered infinitely thin and the surface double-sided
